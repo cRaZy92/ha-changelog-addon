@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-STATE_DIR = "/addon_configs/changelog_generator"
+STATE_DIR = "/data"
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
+
+LEGACY_STATE_FILE = "/addon_configs/changelog_generator/state.json"
 
 DEFAULT_STATE = {
     "last_run_commit": None,
@@ -22,18 +24,34 @@ def _ensure_dir():
     os.makedirs(STATE_DIR, exist_ok=True)
 
 
+def _read_state_file(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("State is not a dict")
+    data.setdefault("last_run_commit", None)
+    data.setdefault("last_run_time", None)
+    data.setdefault("history", [])
+    return data
+
+
+def _migrate_legacy_state():
+    """Copy legacy /addon_configs state into /data if /data has none yet."""
+    if os.path.exists(STATE_FILE) or not os.path.exists(LEGACY_STATE_FILE):
+        return
+    try:
+        data = _read_state_file(LEGACY_STATE_FILE)
+        save_state(data)
+        logger.info("Migrated state from %s to %s", LEGACY_STATE_FILE, STATE_FILE)
+    except Exception as e:
+        logger.warning("Legacy state migration failed: %s", e)
+
+
 def load_state() -> dict:
     """Load state from disk. Returns default state on any error."""
+    _migrate_legacy_state()
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        # Validate structure
-        if not isinstance(data, dict):
-            raise ValueError("State is not a dict")
-        data.setdefault("last_run_commit", None)
-        data.setdefault("last_run_time", None)
-        data.setdefault("history", [])
-        return data
+        return _read_state_file(STATE_FILE)
     except FileNotFoundError:
         logger.info("No state file found, starting fresh")
         return dict(DEFAULT_STATE)

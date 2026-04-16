@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Fix: move state to `/data/state.json` so last processed commit and history survive addon restarts, updates, and HA reboots
+- Auto-migrate existing state from legacy `/addon_configs/changelog_generator/state.json`
+
 ## 0.4.0
 
 - Commit selection: checkboxes to include/exclude individual commits before generating
