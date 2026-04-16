@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- Fix pending commits heading not resetting after changelog generation
+
 ## 0.2.2
 
 - Fix run.sh shebang for S6 overlay compatibility (`with-contenv bash`)

@@ -666,6 +666,7 @@
 
                 if (commits.length === 0) {
                     container.style.display = 'block';
+                    document.querySelector('#pendingCommits h2').textContent = 'Pending Commits';
                     list.innerHTML = '<li class="pending-empty">No new commits since last run</li>';
                     return;
                 }
