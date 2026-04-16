@@ -1,6 +1,6 @@
 name: "Changelog Generator"
 description: "Generates human-readable changelogs from your Home Assistant config git history using AI."
-version: "0.2.1"
+version: "0.2.2"
 slug: "changelog_generator"
 init: false
 arch:

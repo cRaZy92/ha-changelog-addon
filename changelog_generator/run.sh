@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/with-contenv bash
 set -e
 
 echo "Starting Changelog Generator addon..."
