@@ -140,6 +140,89 @@ def get_pending_commits(
     return commits
 
 
+def estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars per token for English/code)."""
+    return len(text) // 4
+
+
+def get_commit_diff(
+    config_path: str,
+    commit_hash: str,
+    excluded_paths: list[str],
+) -> str:
+    """Get diff for a single commit. Returns the patch text."""
+    _check_is_git_repo(config_path)
+
+    pathspec = _build_pathspec(excluded_paths)
+    diff = _run_git(
+        ["show", "--format=", "--patch", "--no-color", commit_hash]
+        + (["--"] + pathspec if pathspec else []),
+        config_path,
+    ).strip()
+    return diff
+
+
+def get_changeset_for_commits(
+    config_path: str,
+    commit_hashes: list[str],
+    excluded_paths: list[str],
+    max_diff_chars: int,
+) -> "Changeset | None":
+    """Build changeset from specific selected commits."""
+    _check_is_git_repo(config_path)
+
+    if not commit_hashes:
+        return None
+
+    pathspec = _build_pathspec(excluded_paths)
+
+    # Collect commit log and diffs for selected commits
+    log_lines = []
+    diffs = []
+    for h in commit_hashes:
+        log_line = _run_git(
+            ["log", "--format=%H | %ai | %s", "-1", h], config_path
+        ).strip()
+        if log_line:
+            log_lines.append(log_line)
+
+        diff = _run_git(
+            ["show", "--format=", "--patch", "--stat", "--no-color", h]
+            + (["--"] + pathspec if pathspec else []),
+            config_path,
+        ).strip()
+        if diff:
+            diffs.append(diff)
+
+    if not diffs:
+        return None
+
+    commit_log = "\n".join(log_lines)
+    full_diff = "\n\n".join(diffs)
+
+    is_truncated = False
+    if len(full_diff) > max_diff_chars:
+        full_diff = full_diff[:max_diff_chars]
+        full_diff += "\n\n[DIFF TRUNCATED — exceeded maximum size]"
+        is_truncated = True
+
+    changeset = f"""=== COMMIT INFO ===
+{commit_log or '(no commit messages)'}
+
+=== FULL DIFF ===
+{full_diff or '(empty diff)'}"""
+
+    # head_commit = most recent selected commit (first in list, assuming newest-first)
+    head_commit = commit_hashes[0]
+
+    return Changeset(
+        changeset=changeset,
+        head_commit=head_commit,
+        commit_count=len(commit_hashes),
+        is_truncated=is_truncated,
+    )
+
+
 def get_changeset(
     config_path: str,
     last_known_commit: str | None,

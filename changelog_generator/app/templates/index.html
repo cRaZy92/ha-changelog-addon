@@ -327,20 +327,33 @@
             list-style: none;
             padding: 0;
             margin: 0;
-            max-height: 300px;
+            max-height: 500px;
             overflow-y: auto;
         }
 
         .pending-commits .commit-item {
-            display: flex;
-            gap: 10px;
-            padding: 6px 0;
             border-bottom: 1px solid var(--border);
             font-size: 0.85rem;
-            align-items: baseline;
         }
 
         .pending-commits .commit-item:last-child { border-bottom: none; }
+
+        .commit-row {
+            display: flex;
+            gap: 8px;
+            padding: 8px 0;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .commit-row:hover { background: var(--bg); }
+
+        .commit-checkbox {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
 
         .commit-hash {
             font-family: monospace;
@@ -354,6 +367,54 @@
             color: var(--text-secondary);
             font-size: 0.75rem;
             flex-shrink: 0;
+        }
+
+        .commit-tokens {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            background: var(--bg);
+            padding: 1px 6px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .commit-diff {
+            display: none;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 4px 0 8px 24px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow: auto;
+            line-height: 1.4;
+        }
+
+        .diff-add { color: var(--success); }
+        .diff-del { color: var(--error); }
+        .diff-hunk { color: var(--primary); font-weight: 600; }
+
+        .commit-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+        }
+
+        .commit-controls label {
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .token-summary {
+            margin-left: auto;
+            font-weight: 600;
+            color: var(--text);
         }
 
         .pending-empty {
@@ -376,6 +437,10 @@
 
     <div class="pending-commits" id="pendingCommits" style="display:none;">
         <h2>Pending Commits</h2>
+        <div class="commit-controls" id="commitControls" style="display:none;">
+            <label><input type="checkbox" id="selectAll" checked onchange="toggleSelectAll(this.checked)"> Select all</label>
+            <span class="token-summary" id="tokenSummary"></span>
+        </div>
         <ul class="commit-list" id="commitList"></ul>
     </div>
 
@@ -527,6 +592,10 @@
 
                 document.getElementById('statusModel').textContent = 'Model: ' + (data.model || '—');
 
+                systemPromptTokens = data.system_prompt_tokens || 0;
+                maxDiffTokens = data.max_diff_tokens || 0;
+                updateTokenSummary();
+
                 if (data.last_run_time) {
                     const d = new Date(data.last_run_time);
                     document.getElementById('statusLastRun').textContent = 'Last: ' + d.toLocaleString();
@@ -540,7 +609,9 @@
                     document.getElementById('generateBtn').disabled = true;
                 } else {
                     cdEl.textContent = '';
-                    document.getElementById('generateBtn').disabled = !data.has_api_key;
+                    const noSelection = document.querySelectorAll('.commit-checkbox').length > 0 &&
+                        document.querySelectorAll('.commit-checkbox:checked').length === 0;
+                    document.getElementById('generateBtn').disabled = !data.has_api_key || noSelection;
                 }
             } catch (e) {
                 console.error('Failed to load status:', e);
@@ -586,7 +657,11 @@
             spinner.style.display = 'block';
 
             try {
-                const body = selectedModel ? JSON.stringify({model: selectedModel}) : null;
+                const selected = getSelectedCommits();
+                const payload = {};
+                if (selectedModel) payload.model = selectedModel;
+                if (selected.length > 0) payload.selected_commits = selected;
+                const body = Object.keys(payload).length ? JSON.stringify(payload) : null;
                 const resp = await fetch(apiUrl('/api/generate'), {
                     method: 'POST',
                     headers: body ? {'Content-Type': 'application/json'} : {},
@@ -712,6 +787,11 @@
             document.getElementById('statusModel').textContent = 'Model: ' + model;
         }
 
+        // Track commit token counts: { hash: tokenCount }
+        const commitTokens = {};
+        let systemPromptTokens = 0;
+        let maxDiffTokens = 0;
+
         async function loadPendingCommits() {
             try {
                 const resp = await fetch(apiUrl('/api/pending-commits'));
@@ -719,15 +799,18 @@
                 const commits = data.commits || [];
                 const container = document.getElementById('pendingCommits');
                 const list = document.getElementById('commitList');
+                const controls = document.getElementById('commitControls');
 
                 if (commits.length === 0) {
                     container.style.display = 'block';
+                    controls.style.display = 'none';
                     document.querySelector('#pendingCommits h2').textContent = 'Pending Commits';
                     list.innerHTML = '<li class="pending-empty">No new commits since last run</li>';
                     return;
                 }
 
                 container.style.display = 'block';
+                controls.style.display = 'flex';
                 document.querySelector('#pendingCommits h2').textContent =
                     'Pending Commits (' + commits.length + ')';
 
@@ -736,14 +819,138 @@
                     const li = document.createElement('li');
                     li.className = 'commit-item';
                     li.innerHTML =
-                        '<span class="commit-hash">' + escHtml(c.hash.substring(0, 7)) + '</span>' +
-                        '<span class="commit-msg">' + escHtml(c.message) + '</span>' +
-                        '<span class="commit-date">' + escHtml(c.date.substring(0, 16)) + '</span>';
+                        '<div class="commit-row" onclick="rowClick(event, \'' + escHtml(c.hash) + '\')">' +
+                            '<input type="checkbox" class="commit-checkbox" data-hash="' + escHtml(c.hash) + '" checked onchange="updateTokenSummary()">' +
+                            '<span class="commit-hash">' + escHtml(c.hash.substring(0, 7)) + '</span>' +
+                            '<span class="commit-msg">' + escHtml(c.message) + '</span>' +
+                            '<span class="commit-tokens" id="tokens-' + escHtml(c.hash.substring(0, 7)) + '">...</span>' +
+                            '<span class="commit-date">' + escHtml(c.date.substring(0, 16)) + '</span>' +
+                        '</div>' +
+                        '<div class="commit-diff" id="diff-' + escHtml(c.hash) + '"></div>';
                     list.appendChild(li);
                 });
+
+                // Fetch token counts for all commits
+                Object.keys(commitTokens).forEach(k => delete commitTokens[k]);
+                commits.forEach(c => loadCommitTokens(c.hash));
             } catch (e) {
                 console.error('Failed to load pending commits:', e);
             }
+        }
+
+        async function loadCommitTokens(hash) {
+            try {
+                const resp = await fetch(apiUrl('/api/commit-diff/' + hash));
+                const data = await resp.json();
+                commitTokens[hash] = data.tokens || 0;
+                const el = document.getElementById('tokens-' + hash.substring(0, 7));
+                if (el) el.textContent = formatTokens(data.tokens) + ' tok';
+                updateTokenSummary();
+            } catch (e) {
+                const el = document.getElementById('tokens-' + hash.substring(0, 7));
+                if (el) el.textContent = '?';
+            }
+        }
+
+        function formatTokens(n) {
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+            return '' + n;
+        }
+
+        function updateTokenSummary() {
+            const checkboxes = document.querySelectorAll('.commit-checkbox');
+            let diffTokens = 0;
+            let selectedCount = 0;
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    selectedCount++;
+                    diffTokens += commitTokens[cb.dataset.hash] || 0;
+                }
+            });
+            const willTruncate = maxDiffTokens > 0 && diffTokens > maxDiffTokens;
+            const effectiveDiffTokens = willTruncate ? maxDiffTokens : diffTokens;
+            const total = effectiveDiffTokens + systemPromptTokens;
+            const el = document.getElementById('tokenSummary');
+            let label = selectedCount + ' selected · ~' + formatTokens(total) + ' tokens (prompt: ' + formatTokens(systemPromptTokens) + ')';
+            if (willTruncate) {
+                label += ' ⚠ diff will be truncated';
+            }
+            el.textContent = label;
+
+            // Sync select-all checkbox
+            const selectAll = document.getElementById('selectAll');
+            selectAll.checked = selectedCount === checkboxes.length;
+            selectAll.indeterminate = selectedCount > 0 && selectedCount < checkboxes.length;
+
+            // Disable generate button when no commits selected, re-enable otherwise
+            const btn = document.getElementById('generateBtn');
+            if (checkboxes.length > 0 && selectedCount === 0) {
+                btn.disabled = true;
+            } else if (selectedCount > 0) {
+                btn.disabled = false;
+            }
+        }
+
+        function toggleSelectAll(checked) {
+            document.querySelectorAll('.commit-checkbox').forEach(cb => {
+                cb.checked = checked;
+            });
+            updateTokenSummary();
+        }
+
+        function rowClick(event, hash) {
+            // Don't toggle diff when clicking checkbox
+            if (event.target.classList.contains('commit-checkbox')) return;
+            toggleDiff(hash);
+        }
+
+        async function toggleDiff(hash) {
+            const diffEl = document.getElementById('diff-' + hash);
+            if (diffEl.style.display === 'block') {
+                diffEl.style.display = 'none';
+                return;
+            }
+
+            // Load diff if not already loaded
+            if (!diffEl.dataset.loaded) {
+                diffEl.textContent = 'Loading...';
+                diffEl.style.display = 'block';
+                try {
+                    const resp = await fetch(apiUrl('/api/commit-diff/' + hash));
+                    const data = await resp.json();
+                    if (data.error) {
+                        diffEl.textContent = 'Error: ' + data.error;
+                    } else if (!data.diff) {
+                        diffEl.textContent = '(no diff)';
+                    } else {
+                        diffEl.innerHTML = colorizeDiff(data.diff);
+                    }
+                    diffEl.dataset.loaded = '1';
+                } catch (e) {
+                    diffEl.textContent = 'Failed to load diff';
+                }
+            } else {
+                diffEl.style.display = 'block';
+            }
+        }
+
+        function colorizeDiff(text) {
+            return text.split('\n').map(line => {
+                const safe = escHtml(line);
+                if (line.startsWith('@@')) return '<span class="diff-hunk">' + safe + '</span>';
+                if (line.startsWith('+')) return '<span class="diff-add">' + safe + '</span>';
+                if (line.startsWith('-')) return '<span class="diff-del">' + safe + '</span>';
+                return safe;
+            }).join('\n');
+        }
+
+        function getSelectedCommits() {
+            const checkboxes = document.querySelectorAll('.commit-checkbox');
+            const selected = [];
+            checkboxes.forEach(cb => {
+                if (cb.checked) selected.push(cb.dataset.hash);
+            });
+            return selected;
         }
 
         // Init

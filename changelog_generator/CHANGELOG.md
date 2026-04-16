@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Commit selection: checkboxes to include/exclude individual commits before generating
+- Inline diff viewer: expand each commit to see its changes
+- Token estimation: per-commit and total token count shown before generating
+- Select all / deselect all control with token summary
+- New `/api/commit-diff/<hash>` endpoint for single-commit diff + token estimate
+- `/api/generate` now accepts `selected_commits` to generate from specific commits only
+
 ## 0.3.0
 
 - Dynamic model selection: fetch available models from OpenAI API

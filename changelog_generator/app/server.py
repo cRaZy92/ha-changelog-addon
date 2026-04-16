@@ -7,7 +7,7 @@ import sys
 from flask import Flask, jsonify, render_template, request
 
 from . import git_reader, openai_client, state
-from .changelog_engine import CONFIG_PATH, run_changelog_generation
+from .changelog_engine import CONFIG_PATH, run_changelog_generation, run_changelog_generation_selected
 from .config_manager import load_config, mask_api_key
 
 logging.basicConfig(
@@ -38,13 +38,20 @@ def api_generate():
         if not config.openai_api_key:
             return jsonify({"success": False, "error": "OpenAI API key is not configured. Set it in addon options."}), 400
 
-        # Allow model override from request body
+        # Allow model override and commit selection from request body
         body = request.get_json(silent=True) or {}
         if body.get("model"):
             config.openai_model = body["model"]
 
-        logger.info("Changelog generation triggered (model: %s)", config.openai_model)
-        result = run_changelog_generation(config)
+        selected_commits = body.get("selected_commits")
+
+        logger.info("Changelog generation triggered (model: %s, selected: %s)",
+                     config.openai_model, len(selected_commits) if selected_commits else "all")
+
+        if selected_commits:
+            result = run_changelog_generation_selected(config, selected_commits)
+        else:
+            result = run_changelog_generation(config)
 
         if result.success:
             return jsonify({
@@ -82,6 +89,8 @@ def api_status():
             "cooldown_remaining": cooldown_remaining,
             "has_api_key": has_api_key,
             "model": config.openai_model,
+            "system_prompt_tokens": git_reader.estimate_tokens(config.system_prompt),
+            "max_diff_tokens": git_reader.estimate_tokens("x" * config.max_diff_chars),
         })
     except Exception as e:
         logger.exception("Error getting status")
@@ -127,6 +136,25 @@ def api_pending_commits():
         })
     except Exception as e:
         logger.exception("Error getting pending commits")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/commit-diff/<commit_hash>")
+def api_commit_diff(commit_hash):
+    """Get diff and token estimate for a single commit."""
+    try:
+        config = load_config()
+        diff = git_reader.get_commit_diff(
+            config_path=CONFIG_PATH,
+            commit_hash=commit_hash,
+            excluded_paths=config.excluded_paths,
+        )
+        tokens = git_reader.estimate_tokens(diff)
+        return jsonify({"diff": diff, "tokens": tokens})
+    except git_reader.GitError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.exception("Error getting commit diff")
         return jsonify({"error": str(e)}), 500
 
 
