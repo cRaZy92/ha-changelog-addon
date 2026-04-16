@@ -8,7 +8,7 @@ from flask import Flask, jsonify, render_template, request
 
 from . import git_reader, state
 from .changelog_engine import CONFIG_PATH, run_changelog_generation
-from .config_manager import load_config, mask_api_key, save_options
+from .config_manager import load_config, mask_api_key
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,47 +83,22 @@ def api_status():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/settings", methods=["GET", "POST"])
+@app.route("/api/settings")
 def api_settings():
-    """Get or update settings."""
-    if request.method == "GET":
-        try:
-            config = load_config()
-            return jsonify({
-                "openai_api_key_masked": mask_api_key(config.openai_api_key),
-                "has_api_key": bool(config.openai_api_key),
-                "openai_model": config.openai_model,
-                "system_prompt": config.system_prompt,
-                "max_diff_chars": config.max_diff_chars,
-                "excluded_paths": config.excluded_paths,
-                "cooldown_seconds": config.cooldown_seconds,
-                "history_count": config.history_count,
-            })
-        except Exception as e:
-            logger.exception("Error getting settings")
-            return jsonify({"error": str(e)}), 500
-
-    # POST — update settings
+    """Get current settings (read-only). Settings are managed via HA addon configuration."""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-
-        allowed_keys = {
-            "openai_api_key", "openai_model", "system_prompt",
-            "max_diff_chars", "excluded_paths",
-            "cooldown_seconds", "history_count",
-        }
-        updates = {k: v for k, v in data.items() if k in allowed_keys}
-
-        if not updates:
-            return jsonify({"error": "No valid settings provided"}), 400
-
-        save_options(updates)
-        logger.info("Settings updated: %s", list(updates.keys()))
-        return jsonify({"success": True})
+        config = load_config()
+        return jsonify({
+            "openai_api_key_masked": mask_api_key(config.openai_api_key),
+            "has_api_key": bool(config.openai_api_key),
+            "openai_model": config.openai_model,
+            "max_diff_chars": config.max_diff_chars,
+            "excluded_paths": config.excluded_paths,
+            "cooldown_seconds": config.cooldown_seconds,
+            "history_count": config.history_count,
+        })
     except Exception as e:
-        logger.exception("Error saving settings")
+        logger.exception("Error getting settings")
         return jsonify({"error": str(e)}), 500
 
 

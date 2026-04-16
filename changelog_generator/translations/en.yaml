@@ -19,4 +19,4 @@ configuration:
     description: Minimum seconds between consecutive changelog generations.
   history_count:
     name: History Count
-    description: How many past changelogs to retain.
+    description: Maximum number of past changelogs to keep in history. After each generation, the oldest entries beyond this limit are permanently deleted. Viewable in the History tab of the UI. Range 1–100, default 20.

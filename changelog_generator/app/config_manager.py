@@ -77,31 +77,6 @@ def load_config() -> Config:
     return config
 
 
-def save_options(updates: dict):
-    """Merge updates into options file and write back."""
-    try:
-        with open(OPTIONS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {}
-
-    data.update(updates)
-
-    import tempfile
-    fd, tmp_path = tempfile.mkstemp(
-        dir=os.path.dirname(OPTIONS_PATH) or ".", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, OPTIONS_PATH)
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
 
 def mask_api_key(key: str) -> str:
     """Mask API key for safe logging. Never log full key."""
