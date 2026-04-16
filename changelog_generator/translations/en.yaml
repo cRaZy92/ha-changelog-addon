@@ -1,0 +1,22 @@
+configuration:
+  openai_api_key:
+    name: OpenAI API Key
+    description: Your OpenAI API key for generating changelogs.
+  openai_model:
+    name: OpenAI Model
+    description: Which OpenAI model to use for changelog generation.
+  system_prompt:
+    name: System Prompt
+    description: Custom system prompt for the AI. Leave empty to use the built-in default.
+  max_diff_chars:
+    name: Max Diff Size (characters)
+    description: Hard limit on diff size sent to OpenAI. Prevents cost spikes.
+  excluded_paths:
+    name: Excluded Paths
+    description: Git pathspec exclusions. Files matching these patterns are excluded from the diff.
+  cooldown_seconds:
+    name: Cooldown (seconds)
+    description: Minimum seconds between consecutive changelog generations.
+  history_count:
+    name: History Count
+    description: How many past changelogs to retain.

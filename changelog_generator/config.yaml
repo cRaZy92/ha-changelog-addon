@@ -1,0 +1,39 @@
+name: "Changelog Generator"
+description: "Generates human-readable changelogs from your Home Assistant config git history using AI."
+version: "0.1.0"
+slug: "changelog_generator"
+init: false
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - i386
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:file-document-edit"
+panel_title: "Changelog"
+map:
+  - config:ro
+  - addon_config:rw
+homeassistant_api: true
+auth_api: true
+options:
+  openai_api_key: ""
+  openai_model: "gpt-4o-mini"
+  system_prompt: ""
+  max_diff_chars: 100000
+  excluded_paths:
+    - "custom_components/"
+  cooldown_seconds: 60
+  history_count: 20
+schema:
+  openai_api_key: str
+  openai_model: "list(gpt-4o-mini|gpt-4o|gpt-4.1-mini|gpt-4.1-nano)?"
+  system_prompt: str?
+  max_diff_chars: "int(10000,500000)"
+  excluded_paths:
+    - str
+  cooldown_seconds: "int(10,600)"
+  history_count: "int(1,100)"
