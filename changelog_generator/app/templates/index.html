@@ -408,7 +408,7 @@
             <div class="form-hint" style="margin-bottom: 12px;">Settings are managed in the Home Assistant addon configuration page.</div>
             <table class="settings-table">
                 <tr><td>API Key</td><td id="cfgApiKey">—</td></tr>
-                <tr><td>Model</td><td id="cfgModel">—</td></tr>
+                <tr><td>Model</td><td><select id="cfgModel" onchange="saveModelChoice(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:0.85rem;"><option>Loading...</option></select></td></tr>
                 <tr><td>Cooldown</td><td id="cfgCooldown">—</td></tr>
                 <tr><td>Max Diff Size</td><td id="cfgMaxDiff">—</td></tr>
                 <tr><td>History Count</td><td id="cfgHistoryCount">—</td></tr>
@@ -586,7 +586,12 @@
             spinner.style.display = 'block';
 
             try {
-                const resp = await fetch(apiUrl('/api/generate'), { method: 'POST' });
+                const body = selectedModel ? JSON.stringify({model: selectedModel}) : null;
+                const resp = await fetch(apiUrl('/api/generate'), {
+                    method: 'POST',
+                    headers: body ? {'Content-Type': 'application/json'} : {},
+                    body: body,
+                });
                 const data = await resp.json();
 
                 if (data.success) {
@@ -632,6 +637,8 @@
             }
         }
 
+        let selectedModel = null;
+
         async function loadSettings() {
             try {
                 const resp = await fetch(apiUrl('/api/settings'));
@@ -646,14 +653,63 @@
                     keyEl.style.color = 'var(--error)';
                 }
 
-                document.getElementById('cfgModel').textContent = s.openai_model;
+                // Set default model from config
+                if (!selectedModel) {
+                    selectedModel = localStorage.getItem('changelog_model') || s.openai_model;
+                }
+                document.getElementById('statusModel').textContent = 'Model: ' + selectedModel;
+
                 document.getElementById('cfgCooldown').textContent = s.cooldown_seconds + 's';
                 document.getElementById('cfgMaxDiff').textContent = s.max_diff_chars.toLocaleString();
                 document.getElementById('cfgHistoryCount').textContent = s.history_count;
                 document.getElementById('cfgExcluded').textContent = s.excluded_paths.join(', ') || 'None';
+
+                // Load models for dropdown
+                loadModels(s.openai_model);
             } catch (e) {
                 console.error('Failed to load settings:', e);
             }
+        }
+
+        let modelsLoaded = false;
+        async function loadModels(defaultModel) {
+            if (modelsLoaded) return;
+            const select = document.getElementById('cfgModel');
+            try {
+                const resp = await fetch(apiUrl('/api/models'));
+                const data = await resp.json();
+                const models = data.models || [];
+                select.innerHTML = '';
+
+                if (models.length === 0) {
+                    select.innerHTML = '<option>' + escHtml(selectedModel || defaultModel) + '</option>';
+                    return;
+                }
+
+                const current = selectedModel || defaultModel;
+                // Ensure current model is in list
+                if (current && !models.includes(current)) {
+                    models.unshift(current);
+                }
+
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    if (m === current) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                modelsLoaded = true;
+            } catch (e) {
+                select.innerHTML = '<option>' + escHtml(selectedModel || defaultModel) + '</option>';
+                console.error('Failed to load models:', e);
+            }
+        }
+
+        function saveModelChoice(model) {
+            selectedModel = model;
+            localStorage.setItem('changelog_model', model);
+            document.getElementById('statusModel').textContent = 'Model: ' + model;
         }
 
         async function loadPendingCommits() {

@@ -6,7 +6,7 @@ import sys
 
 from flask import Flask, jsonify, render_template, request
 
-from . import git_reader, state
+from . import git_reader, openai_client, state
 from .changelog_engine import CONFIG_PATH, run_changelog_generation
 from .config_manager import load_config, mask_api_key
 
@@ -37,6 +37,11 @@ def api_generate():
         config = load_config()
         if not config.openai_api_key:
             return jsonify({"success": False, "error": "OpenAI API key is not configured. Set it in addon options."}), 400
+
+        # Allow model override from request body
+        body = request.get_json(silent=True) or {}
+        if body.get("model"):
+            config.openai_model = body["model"]
 
         logger.info("Changelog generation triggered (model: %s)", config.openai_model)
         result = run_changelog_generation(config)
@@ -123,6 +128,20 @@ def api_pending_commits():
     except Exception as e:
         logger.exception("Error getting pending commits")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/models")
+def api_models():
+    """Fetch available chat models from OpenAI."""
+    try:
+        config = load_config()
+        if not config.openai_api_key:
+            return jsonify({"models": [], "error": "API key not configured"}), 400
+        models = openai_client.list_models(config.openai_api_key)
+        return jsonify({"models": models, "current": config.openai_model})
+    except Exception as e:
+        logger.exception("Error fetching models")
+        return jsonify({"models": [], "error": str(e)}), 500
 
 
 @app.route("/api/history")

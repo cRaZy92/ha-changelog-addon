@@ -8,6 +8,7 @@ import requests as http
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api.openai.com/v1/chat/completions"
+MODELS_URL = "https://api.openai.com/v1/models"
 REQUEST_TIMEOUT = 60
 
 
@@ -17,6 +18,36 @@ class AIResult:
     changelog: str
     error: str | None
     tokens_used: int
+
+
+def list_models(api_key: str) -> list[str]:
+    """Fetch available chat models from OpenAI API."""
+    if not api_key:
+        return []
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    try:
+        response = http.get(MODELS_URL, headers=headers, timeout=REQUEST_TIMEOUT)
+    except http.RequestException:
+        logger.warning("Failed to fetch models from OpenAI")
+        return []
+
+    if response.status_code != 200:
+        logger.warning("OpenAI models endpoint returned %d", response.status_code)
+        return []
+
+    try:
+        data = response.json()
+        models = [m["id"] for m in data.get("data", [])]
+        # Filter to chat-capable models (gpt, o1, o3, o4, chatgpt)
+        chat_prefixes = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+        chat_models = [m for m in models if m.startswith(chat_prefixes)]
+        chat_models.sort()
+        return chat_models
+    except (KeyError, ValueError):
+        logger.warning("Unexpected response from OpenAI models endpoint")
+        return []
 
 
 def generate_changelog(
@@ -45,8 +76,7 @@ def generate_changelog(
             {"role": "developer", "content": system_prompt},
             {"role": "user", "content": changeset},
         ],
-        "max_tokens": 2000,
-        "temperature": 0.3,
+        "max_completion_tokens": 2000,
     }
 
     try:

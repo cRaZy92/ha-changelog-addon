@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Dynamic model selection: fetch available models from OpenAI API
+- Model dropdown in settings panel (persists choice in browser)
+- New `/api/models` endpoint
+- Model override passed per-generation instead of config-only
+- Config schema now accepts any model string (not hardcoded list)
+
 ## 0.2.3
 
 - Fix pending commits heading not resetting after changelog generation
